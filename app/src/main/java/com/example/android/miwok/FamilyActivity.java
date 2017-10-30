@@ -1,6 +1,8 @@
 package com.example.android.miwok;
 
+import android.content.Context;
 import android.content.Intent;
+import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.Bundle;
 import android.support.v4.content.ContextCompat;
@@ -16,6 +18,31 @@ import java.util.ArrayList;
 public class FamilyActivity extends AppCompatActivity {
 
     private MediaPlayer mMediaPlayer;
+
+    private AudioManager mAudioManager;
+
+    AudioManager.OnAudioFocusChangeListener mOnAudioFocusChangeListener =
+            new AudioManager.OnAudioFocusChangeListener() {
+
+                public void onAudioFocusChange(int focusChange) {
+                    if (focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
+                            focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+                        // If we lose audiofocus temporarily (even if we can duck) we want
+                        // to pause playback and seek to the beginning of that audio file.
+                        mMediaPlayer.pause();
+                        mMediaPlayer.seekTo(0);
+                    } else if (focusChange == AudioManager.AUDIOFOCUS_GAIN) {
+                        // After focus is regained we want to resume playing. The file will
+                        // resume from the beginning because of the seekTo(0) statement
+                        // in the first if condition.
+                        mMediaPlayer.start();
+                    } else if (focusChange == AudioManager.AUDIOFOCUS_LOSS) {
+                        // If audio focus is permanently lost we want to stop playback and
+                        // release the Media Player's resources back to the system.
+                        releaseMediaPlayer();
+                    }
+                }
+            };
 
     private MediaPlayer.OnCompletionListener mCompletionListener = new MediaPlayer.OnCompletionListener() {
         @Override
@@ -42,6 +69,8 @@ public class FamilyActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.word_list);
+
+        mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         // Create array for Word values one through ten
         final ArrayList<Word> words = new ArrayList<Word>();
@@ -84,13 +113,27 @@ public class FamilyActivity extends AppCompatActivity {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 Word word = words.get(position);
-                mMediaPlayer = MediaPlayer.create(FamilyActivity.this, word.getAudioResId());
-                mMediaPlayer.start();
-                Toast.makeText(FamilyActivity.this, word.getMiwokTranslation(), Toast.LENGTH_SHORT).show();
+                releaseMediaPlayer();
 
-                mMediaPlayer.setOnCompletionListener(mCompletionListener);
+                // Request audio focus for playback
+                int result = mAudioManager.requestAudioFocus(mOnAudioFocusChangeListener,
+                        // Use the music stream
+                        AudioManager.STREAM_MUSIC,
+                        // Request permanent focus
+                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
 
-                Toast.makeText(FamilyActivity.this, "MediaPlayer Released", Toast.LENGTH_SHORT).show();
+                if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+                    // We have audio focus now
+
+                    mMediaPlayer = MediaPlayer.create(FamilyActivity.this, word.getAudioResId());
+                    mMediaPlayer.start();
+
+                    Toast.makeText(FamilyActivity.this, word.getMiwokTranslation(), Toast.LENGTH_SHORT).show();
+
+                    mMediaPlayer.setOnCompletionListener(mCompletionListener);
+
+                    Toast.makeText(FamilyActivity.this, "MediaPlayer Released", Toast.LENGTH_SHORT).show();
+                }
             }
         });
     }
